@@ -1,0 +1,111 @@
+seed_everything: 19
+
+
+trainer:
+  default_root_dir: ./results/chexpert_base_resnet/
+  accelerator: gpu
+  devices: 1  # Change this number to the number of GPUs you have
+  # strategy: ddp
+  max_epochs: 100
+
+  callbacks:
+  - class_path: lightning.pytorch.callbacks.RichProgressBar
+  - class_path: lightning.pytorch.callbacks.EarlyStopping
+    init_args:
+        monitor: 'val_loss'
+        patience: 4
+        mode: 'min'  # or 'max' depending on your metric
+  - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+    init_args:
+        monitor: 'val_loss'
+        mode: 'min'  # or 'max' depending on your metric
+        save_top_k: 1  # save only the best checkpoint
+        dirpath: ${trainer.default_root_dir}checkpoints/
+        filename: 'best_val_loss-{epoch:02d}-{val_loss:.4f}'
+
+  
+
+data: # data.moudle.DataModule
+  global_variable:
+    image_root_path: /datasets/chexpert/chexpert/CheXpert-v1.0-small/
+    # for prediction process or training process?
+    use_frontal: True
+    shuffle: True
+    prediction_on: "val"
+
+  train_dataset:
+    class_path: data.image.dataset_class.AdvancedCLS
+    init_args:
+        csv_path: /home/hhamidi/clean/per_storage/csvs/chexpert/chexpert_train.csv
+        image_root_path: ${data.global_variable.image_root_path}
+        train_cols:
+          - Cardiomegaly
+          - Edema
+          - Consolidation
+          - Atelectasis
+          - Pleural Effusion
+          - No Finding
+        use_upsampling: False
+        shuffle: ${data.global_variable.shuffle}
+        use_frontal: ${data.global_variable.use_frontal}
+        image_size: 224
+        mode: train
+        class_index: -1
+  val_dataset:
+    class_path: data.image.dataset_class.AdvancedCLS
+    init_args:
+        csv_path: /home/hhamidi/clean/per_storage/csvs/chexpert/chexpert_val.csv
+        image_root_path: ${data.global_variable.image_root_path}
+        train_cols:
+          - Cardiomegaly
+          - Edema
+          - Consolidation
+          - Atelectasis
+          - Pleural Effusion
+          - No Finding
+        use_upsampling: False
+        shuffle: ${data.global_variable.shuffle}
+        use_frontal: ${data.global_variable.use_frontal}
+        image_size: 224
+        mode: val
+        class_index: -1
+  test_dataset:
+    class_path: data.image.dataset_class.AdvancedCLS
+    init_args:
+        csv_path: /home/hhamidi/clean/per_storage/csvs/chexpert/chexpert_val_org.csv
+        image_root_path: /datasets/chexpert/chexpert/CheXpert-v1.0-small/
+        train_cols:
+          - Cardiomegaly
+          - Edema
+          - Consolidation
+          - Atelectasis
+          - Pleural Effusion
+          - No Finding
+        use_upsampling: False
+        shuffle: ${data.global_variable.shuffle}
+        use_frontal: ${data.global_variable.use_frontal}
+        image_size: 224
+        mode: test
+        class_index: -1
+
+
+  batch_size: 32
+  num_workers: 20
+  prediction_on: ${data.global_variable.prediction_on}
+
+
+model: # models.module.CLS
+  model:
+    class_path: models.image.models.ResNetWithHead
+    init_args:
+      hidden_layer_sizes: [768,128]
+      dropout_rate: 0.1
+      num_classes: 6
+  criterion: # torch.nn.BCEWithLogitsLoss
+    class_path: torch.nn.BCEWithLogitsLoss
+  weight_decay: 0.0
+  prediction_on: ${data.global_variable.prediction_on}
+  save_probabilities_path: ${trainer.default_root_dir}probabilities/
+  lr: 0.0001
+
+  #CUDA_VISIBLE_DEVICES=1 python main.py fit -c ./configs/chexpert_base.yaml
